@@ -2,6 +2,9 @@ import pygame
 import math
 import random
 
+# Variables globales para seguimiento de récords
+BEST_TIME_EVER = 30000.0 # 30 segundos iniciales como referencia
+
 # --- Clase para la Red Neuronal (Perceptrón Multicapa Simple) ---
 class NeuralNetwork:
     def __init__(self, input_nodes, hidden_nodes, output_nodes):
@@ -194,6 +197,7 @@ class Car:
         self.distance_traveled = 0.0
         self.last_pista_dist = dist_map[int(self.x)][int(self.y)] if dist_map[int(self.x)][int(self.y)] else max_dist
         self.last_move_time = pygame.time.get_ticks()
+        self.start_time = pygame.time.get_ticks() # Momento en que nace el coche
         
         # Red Neuronal: 7 sensores + 1 progreso = 8 entradas
         # 8 neuronas ocultas para procesar mejor la dirección, 2 salidas
@@ -272,6 +276,9 @@ class Car:
                 # El progreso es inverso a la distancia a meta (1000 = meta, 0 = inicio)
                 progreso_actual = (1 - current_pista_dist / max_dist) * 1000
                 
+                # PENALIZACIÓN POR TIEMPO: Pierde 2 puntos por segundo para incentivar la velocidad
+                self.fitness -= 0.033 # Aprox 2 puntos por segundo a 60 FPS
+                
                 # Checkpoint Fitness: Bonos por tramos completados (25%, 50%, 75% del circuito)
                 for threshold in [250, 500, 750]:
                     if progreso_actual > threshold and self.max_reached_fitness <= threshold:
@@ -292,11 +299,28 @@ class Car:
                         self.alive = False
                         self.death_reason = "wrong_way"
 
-                # BONO POR META: Si la distancia al nodo objetivo es muy pequeña, es que ha llegado
-                if current_pista_dist < 15:
-                    self.fitness += 5000 # Gran recompensa por completar el circuito
-                    self.alive = False
-                    self.death_reason = "finished"
+                # DETECCIÓN DE PASO POR META (SENTIDO CORRECTO)
+                # Un coche solo puede ganar si ha recorrido al menos el 80% de la pista
+                if current_pista_dist < 25:
+                    if self.max_reached_fitness > 800: # Ha completado el 80% del progreso
+                        global BEST_TIME_EVER
+                        time_taken = pygame.time.get_ticks() - self.start_time
+                        
+                        time_multiplier = max(1.0, BEST_TIME_EVER / max(1, time_taken))
+                        
+                        if time_taken < BEST_TIME_EVER:
+                            BEST_TIME_EVER = float(time_taken)
+                            print(f"¡NUEVO RÉCORD HISTÓRICO: {BEST_TIME_EVER/1000:.2f}s!")
+                        
+                        self.fitness += 10000 * time_multiplier
+                        self.alive = False
+                        self.death_reason = "finished"
+                        print(f"¡Meta alcanzada! Tiempo: {time_taken/1000:.2f}s | Multiplicador: x{time_multiplier:.2f}")
+                    else:
+                        # Si toca la meta sin haber dado la vuelta (trampa)
+                        # No muere necesariamente, pero no gana el bono de meta.
+                        # Si retrocede mucho, ya tenemos la lógica de "wrong_way" abajo.
+                        pass
 
                 self.last_pista_dist = current_pista_dist
         else:
@@ -385,16 +409,19 @@ def create_generation(size, best_brain=None):
         cars.append(Car(brain=child_brain))
 
     # 3. EXPLORADORES: 30% de la población.
-    # Mutación moderada (0.05) para buscar alternativas.
+    # Mutación moderada (0.1) para buscar alternativas.
     num_explorers = int(size * 0.3)
     for _ in range(num_explorers):
         child_brain = copy.deepcopy(best_brain)
-        child_brain.mutate(0.05)
+        child_brain.mutate(0.1)
         cars.append(Car(brain=child_brain))
 
     # 4. REFUERZO ALEATORIO: El resto (10-20%).
+    # Con mutación agresiva (0.2)
     while len(cars) < size:
-        cars.append(Car())
+        new_car = Car()
+        new_car.brain.mutate(0.2)
+        cars.append(new_car)
 
     return cars
 
