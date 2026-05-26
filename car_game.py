@@ -188,8 +188,8 @@ class Car:
         self.angle = start_angle # Orientación inicial hacia la pista
         self.speed = 0
         self.max_speed = 5
-        self.acceleration = 0.2
-        self.rotation_speed = 4
+        self.acceleration = 5
+        self.rotation_speed = 5
         self.alive = True
         self.death_reason = None # "collision" o "inactivity"
         self.fitness = 0.0 # Usamos float para evitar errores de tipo
